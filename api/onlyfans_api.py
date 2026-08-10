@@ -10,7 +10,7 @@ Handles all OnlyFans API interactions including:
 Completely separate from Fansly API.
 """
 
-import requests
+from curl_cffi import requests
 import time
 from typing import Optional, Dict, List
 from api.onlyfans_auth import OnlyFansAuth
@@ -40,10 +40,10 @@ class OnlyFansApi:
         self.user_agent = user_agent
         self.x_bc = x_bc
 
-        self.session = requests.Session()
+        self.session = requests.Session(impersonate="chrome")
         self.auth = OnlyFansAuth(sess, auth_id, auth_uid, user_agent, x_bc)
 
-    def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
+    def _make_request(self, method: str, url: str, **kwargs):
         """
         Make authenticated API request
 

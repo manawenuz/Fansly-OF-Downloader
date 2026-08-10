@@ -57,6 +57,9 @@ class OnlyFansConfig:
     download_photos: bool = True
     download_videos: bool = True
 
+    # Print "Processing N posts" every N pages (0 = never)
+    page_progress_interval: int = 0
+
     # Cache
     last_run_timestamp: Optional[str] = None
 
@@ -141,7 +144,7 @@ def load_onlyfans_config(config: OnlyFansConfig) -> None:
         if download_dir_str:
             config.download_directory = Path(download_dir_str)
 
-        config.download_mode = config._parser.get('Options', 'download_mode', fallback='Timeline')
+        config.download_mode = config._parser.get('Options', 'download_mode', fallback='Timeline').title()
         config.show_downloads = config._parser.getboolean('Options', 'show_downloads', fallback=True)
         config.show_skipped_downloads = config._parser.getboolean('Options', 'show_skipped_downloads', fallback=True)
         config.open_folder_when_finished = config._parser.getboolean('Options', 'open_folder_when_finished', fallback=True)
@@ -162,6 +165,9 @@ def load_onlyfans_config(config: OnlyFansConfig) -> None:
         # Media type filters
         config.download_photos = config._parser.getboolean('Options', 'download_photos', fallback=True)
         config.download_videos = config._parser.getboolean('Options', 'download_videos', fallback=True)
+
+        # Page progress (0 = silent)
+        config.page_progress_interval = config._parser.getint('Options', 'page_progress_interval', fallback=0)
 
     # Load cache
     if config._parser.has_section('Cache'):

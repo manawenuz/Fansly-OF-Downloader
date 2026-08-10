@@ -4,13 +4,17 @@ Download timeline posts from OnlyFans creators.
 Handles photos, videos, and GIFs.
 """
 
-import requests
+from curl_cffi import requests
 import time
+import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional
 from config.onlyfans_config import OnlyFansConfig
 from download.downloadstate import DownloadState
 from textio import print_info, print_warning, print_error
+
+PARALLEL_DOWNLOADS = 8
 
 
 def download_timeline(config: OnlyFansConfig, state: DownloadState) -> None:
@@ -70,6 +74,7 @@ def download_timeline(config: OnlyFansConfig, state: DownloadState) -> None:
 
         before_cursor = None
         total_posts = 0
+        page_num = 0
 
         while True:
             try:
@@ -86,56 +91,43 @@ def download_timeline(config: OnlyFansConfig, state: DownloadState) -> None:
                     print_info("No more posts to fetch")
                     break
 
-                print_info(f"Processing {len(posts)} posts...")
+                page_num += 1
+                interval = getattr(config, 'page_progress_interval', 0)
+                if interval > 0 and page_num % interval == 0:
+                    print_info(f"Page {page_num}: processing {len(posts)} posts (total so far: {total_posts})...")
 
-                # Process each post
+                # Collect all media items from this page of posts
+                page_media = []
                 for post in posts:
-                    # Check stop flag before processing each post
                     if config.stop_flag and config.stop_flag.is_set():
-                        print_warning("Download stopped by user")
                         break
-
                     total_posts += 1
-                    post_id = post.get('id')
-
-                    if config.show_downloads:
-                        print_info(f"Post {total_posts}: ID {post_id}")
-
-                    # Parse media from post
-                    media_items = parse_post_media(post, state)
-
-                    # Download each media item
-                    for media in media_items:
-                        # Check stop flag before each download
-                        if config.stop_flag and config.stop_flag.is_set():
-                            print_warning("Download stopped by user")
-                            break
-
+                    for media in parse_post_media(post, state):
                         media_type = media.get('type', 'unknown')
-
-                        # Skip audio entirely (user preference)
-                        if media_type == 'audio':
-                            continue
-
-                        # Skip media types user doesn't want
                         if media_type in ('photo', 'gif') and not config.download_photos:
                             continue
                         if media_type == 'video' and not config.download_videos:
                             continue
+                        page_media.append(media)
 
-                        # Send progress update before download
-                        send_progress(
-                            current=total_media + 1,
-                            total=total_media + len(media_items),
-                            filename=media.get('filename', '')
-                        )
+                if config.stop_flag and config.stop_flag.is_set():
+                    print_warning("Download stopped by user")
+                    break
 
-                        if download_media_item(config, state, media):
+                # Download page media in parallel
+                with ThreadPoolExecutor(max_workers=PARALLEL_DOWNLOADS) as pool:
+                    futures = {
+                        pool.submit(download_media_item, config, state, m): m
+                        for m in page_media
+                    }
+                    for future in as_completed(futures):
+                        if config.stop_flag and config.stop_flag.is_set():
+                            pool.shutdown(wait=False, cancel_futures=True)
+                            print_warning("Download stopped by user")
+                            break
+                        if future.result():
                             total_media += 1
-
-                    # If stopped during media downloads, break from post loop too
-                    if config.stop_flag and config.stop_flag.is_set():
-                        break
+                            send_progress(total_media, total_media, futures[future].get('filename', ''))
 
                 # Check if post limit reached
                 if apply_post_limit and total_posts >= config.max_posts_per_creator:
@@ -165,7 +157,7 @@ def download_timeline(config: OnlyFansConfig, state: DownloadState) -> None:
                     print_warning("Download stopped by user")
                     break
 
-            except requests.HTTPError as e:
+            except requests.exceptions.HTTPError as e:
                 if e.response.status_code == 429:
                     # Rate limited
                     print_warning("Rate limited. Waiting 60 seconds...")
@@ -257,58 +249,83 @@ def parse_post_media(post: Dict, state: DownloadState) -> List[Dict]:
 def download_media_item(config: OnlyFansConfig, state: DownloadState,
                         media: Dict) -> bool:
     """
-    Download single media item
-
-    Args:
-        config: OnlyFans configuration
-        state: Download state
-        media: Media item dict
+    Download single media item — writes to WebDAV if configured, local disk otherwise.
 
     Returns:
         True if downloaded successfully, False if skipped
     """
-    file_path = state.base_path / media['filename']
+    from download.webdav_client import get_client
+    import tempfile
 
-    # Skip if exists
-    if file_path.exists():
+    filename = media['filename']
+    dav = get_client()
+
+    # Determine the relative path on WebDAV (mirrors local structure)
+    # state.base_path is e.g. /Volumes/... or a local dir; we only need the
+    # last two segments: <creator>-of/Timeline/<filename>
+    rel_parts = state.base_path.parts[-2:]  # ('cherrylovebombb-of', 'Timeline')
+    dav_rel = str(Path(*rel_parts) / filename)
+
+    local_path = state.base_path / filename
+
+    # --- Skip check: local first, then WebDAV ---
+    if local_path.exists():
         if config.show_skipped_downloads:
-            print_info(f"  ⊘ Skipping (exists): {media['filename']}")
+            print_info(f"  ⊘ Skipping (local): {filename}")
+        return False
+
+    if dav and dav.exists(dav_rel):
+        if config.show_skipped_downloads:
+            print_info(f"  ⊘ Skipping (webdav): {filename}")
         return False
 
     try:
         if config.show_downloads:
-            print_info(f"  ↓ Downloading: {media['filename']}")
+            print_info(f"  ↓ Downloading: {filename}")
 
-        # Download file
-        response = requests.get(media['url'], stream=True, timeout=60)
+        response = requests.get(media['url'], stream=True, timeout=60, impersonate="chrome")
         response.raise_for_status()
 
-        # Write to file
-        stopped = False
-        with open(file_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                # Check stop flag during download
-                if config.stop_flag and config.stop_flag.is_set():
-                    print_warning(f"  ⊘ Download stopped: {media['filename']}")
-                    stopped = True
-                    break  # Exit loop, let file close
+        if dav:
+            # Stream to a temp file, then PUT to WebDAV
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+                stopped = False
+                for chunk in response.iter_content(chunk_size=8192):
+                    if config.stop_flag and config.stop_flag.is_set():
+                        stopped = True
+                        break
+                    if chunk:
+                        tmp.write(chunk)
 
-                if chunk:
-                    f.write(chunk)
+            if stopped:
+                tmp_path.unlink(missing_ok=True)
+                return False
 
-        # Clean up partial file if stopped (file is now closed)
-        if stopped:
-            if file_path.exists():
-                file_path.unlink()
-            return False
+            from download.webdav_client import _known_dirs
+            dav.ensure_dirs(dav_rel, _known_dirs)
+            dav.put(dav_rel, tmp_path)
+            tmp_path.unlink(missing_ok=True)
+        else:
+            # Write locally
+            stopped = False
+            with open(local_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if config.stop_flag and config.stop_flag.is_set():
+                        stopped = True
+                        break
+                    if chunk:
+                        f.write(chunk)
+            if stopped:
+                local_path.unlink(missing_ok=True)
+                return False
 
         return True
 
     except Exception as e:
-        print_error(f"  ✗ Failed to download {media['filename']}: {e}")
-        # Remove partial file
-        if file_path.exists():
-            file_path.unlink()
+        print_error(f"  ✗ Failed to download {filename}: {e}")
+        if local_path.exists():
+            local_path.unlink(missing_ok=True)
         return False
 
 

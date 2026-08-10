@@ -58,6 +58,15 @@ class Timer(ContextDecorator):
 
         return elapsed_time
 
+    def elapsed_str(self) -> str:
+        """Returns elapsed time as a formatted string without stopping the timer."""
+        if self._start_time is None:
+            elapsed = self.timers.get(self.name, 0)
+        else:
+            elapsed = time.perf_counter() - self._start_time
+        minutes = int(elapsed // 60)
+        seconds = elapsed % 60
+        return f"{minutes}m {seconds:.1f}s" if minutes else f"{seconds:.1f}s"
 
     def __enter__(self) -> "Timer":
         """Starts a new timer as a context manager."""

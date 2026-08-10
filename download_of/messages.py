@@ -4,7 +4,7 @@ Download messages from OnlyFans creators.
 Handles photos, videos, and GIFs from direct messages.
 """
 
-import requests
+from curl_cffi import requests
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -175,7 +175,7 @@ def download_messages(config: OnlyFansConfig, state: DownloadState) -> None:
                     print_warning("Download stopped by user")
                     break
 
-            except requests.HTTPError as e:
+            except requests.exceptions.HTTPError as e:
                 if e.response.status_code == 429:
                     # Rate limited
                     print_warning("Rate limited. Waiting 60 seconds...")

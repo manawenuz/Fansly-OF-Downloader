@@ -15,7 +15,7 @@ Adapted for Fansly Downloader NG
 
 import time
 import hashlib
-import requests
+from curl_cffi import requests
 from urllib.parse import urlparse
 from typing import Optional, Dict
 import json
@@ -89,7 +89,7 @@ class OnlyFansAuth:
         last_error = None
         for endpoint in self.RULE_ENDPOINTS:
             try:
-                response = requests.get(endpoint, timeout=10)
+                response = requests.get(endpoint, timeout=10, impersonate="chrome")
                 if response.status_code == 200:
                     rules = response.json()
 
