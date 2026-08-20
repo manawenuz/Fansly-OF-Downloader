@@ -229,3 +229,6 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# local patched copy of manDownloader fetch_metadata
+fetch_metadata_patched.py
