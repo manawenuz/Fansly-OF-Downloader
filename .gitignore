@@ -232,3 +232,9 @@ yarn-error.log*
 
 # local patched copy of manDownloader fetch_metadata
 fetch_metadata_patched.py
+
+# private sidecar (TrueNAS) - must stay private
+sync/
+containers/
+.of-sync/
+
