@@ -152,7 +152,8 @@ class OnlyFansApi:
         return response.json()
 
     def get_timeline(self, user_id: str, limit: int = 100,
-                     before_publish_time: Optional[str] = None) -> Dict:
+                     before_publish_time: Optional[str] = None,
+                     pinned: str = '0') -> Dict:
         """
         Get timeline posts for a user
 
@@ -160,6 +161,7 @@ class OnlyFansApi:
             user_id: Creator's user ID
             limit: Number of posts to fetch (default: 100)
             before_publish_time: Fetch posts before this timestamp (pagination)
+            pinned: '0' for regular timeline, '1' for pinned posts
 
         Returns:
             Dict with:
@@ -174,7 +176,7 @@ class OnlyFansApi:
             'order': 'publish_date_desc',  # Newest posts first
             'skip_users': 'all',
             'skip_users_dups': '1',
-            'pinned': '0',
+            'pinned': pinned,
             'format': 'infinite',
         }
 

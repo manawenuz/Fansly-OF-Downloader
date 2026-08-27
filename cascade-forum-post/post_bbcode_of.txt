@@ -1,0 +1,178 @@
+[quote]
+[size=30][b]CASCADE VIEWER v1 — OnlyFans Archive Gallery[/b][/size]
+[img=450]screenshots/07_mobile.jpg[/img] [i]Creator header + feed top — cherrylovebombb[/i]
+
+[size=28][b]⬇ DOWNLOAD HERE[/b][/size]
+[url=https://github.com/manawenuz/cascade-viewer]https://github.com/manawenuz/cascade-viewer[/url] | [url=https://github.com/manawenuz/cascade-viewer/pkgs/container/cascade-viewer]GHCR: ghcr.io/manawenuz/cascade-viewer:latest[/url]
+
+[hr]
+
+[size=26]
+Cascade Viewer is a self-hosted gallery built for local OnlyFans archives. Justified grid, full-screen lightbox, search by post text, date navigation and on-demand video thumbs — all in one Docker image.
+
+No cloud.
+No tracking.
+Browse thousands of posts and media from your local `*-of` archives in the browser.
+
+Works with archives produced by the companion OF sync sidecar (`metadata.json` + `Timeline` / `Messages` / `Stories`).
+[/size]
+
+[hr]
+
+[size=30][b]🖼️ JUSTIFIED GALLERY[/b][/size]
+
+[list]
+[*][size=26]Flickr-style justified rows — no cropping, perfect for OnlyFans photo sets[/size]
+[*][size=26]Lazy-loaded for fast scrolling through 1000+ posts per creator[/size]
+[*][size=26]Sidebar with creator avatar, Timeline / Messages / Stories / Media counts and labels[/size]
+[*][size=26]Dark theme, responsive on desktop and mobile[/size]
+[/list]
+
+[size=26][i]Media tab — justified grid (top and scrolled):[/i][/size]
+[img=250]screenshots/01_grid.jpg[/img]
+[img=250]screenshots/02_grid2.jpg[/img]
+
+[hr]
+
+[size=30][b]🔍 SEARCH + DATE NAVIGATION[/b][/size]
+
+[list]
+[*][size=26]Full-text search inside OnlyFans post text — see search for “morning” filtering feed[/size]
+[*][size=26]Date picker overlay for jumping to any month/day[/size]
+[*][size=26]Polls, locked/preview states and paywall cards rendered as on-site[/size]
+[/list]
+
+[size=26][i]Search active and date picker overlay:[/i][/size]
+[img=250]screenshots/03_search.jpg[/img]
+[img=250]screenshots/04_date.jpg[/img]
+
+[hr]
+
+[size=30][b]🎞️ NATIVE LIGHTBOX[/b][/size]
+
+[list]
+[*][size=26]Fixed, centered lightbox (not inline) — previous/next, counter, close[/size]
+[*][size=26]Photo and video support with ffmpeg thumbs (scale=480:-1)[/size]
+[*][size=26]Keyboard and swipe navigation[/size]
+[/list]
+
+[size=26][i]Lightbox — first item then navigated to next:[/i][/size]
+[img=250]screenshots/05_lightbox.jpg[/img]
+[img=250]screenshots/06_lightbox2.jpg[/img]
+
+[hr]
+
+[size=30][b]📱 MOBILE[/b][/size]
+
+[list]
+[*][size=26]Profile header + feed top on mobile[/size]
+[*][size=26]Slide-out drawer navigation[/size]
+[/list]
+
+[size=26][i]Mobile — feed top and drawer open:[/i][/size]
+[img=250]screenshots/07_mobile.jpg[/img]
+[img=250]screenshots/08_mobile2.jpg[/img]
+
+[hr]
+
+[size=30][b]🎥 LIVE PREVIEW[/b][/size]
+
+[size=26][i]Short usage demo (scroll → comments → lightbox → search):[/i][/size]
+[img]screenshots/demo.webp[/img]
+[img]screenshots/usage_demo.webp[/img]
+
+[hr]
+
+[size=30][b]FEATURES[/b][/size]
+
+[list]
+[*][size=26]✔ Built for OnlyFans `*-of` archives (metadata.json + media folders)[/size]
+[*][size=26]✔ Justified layout — sharp, uncropped previews[/size]
+[*][size=26]✔ Native centered lightbox (fixed overlay, not inline) — matches OF Viewer redesign[/size]
+[*][size=26]✔ Search + date navigation across Timeline, Messages and Stories[/size]
+[*][size=26]✔ Read-only — never writes to your source archive, thumbs in separate volume[/size]
+[*][size=26]✔ Two JSON APIs: /api/creators and /api/metadata/:creator (mtime cached)[/size]
+[*][size=26]✔ Single container: node:22-alpine + ffmpeg, concurrency=2 thumb queue[/size]
+[/list]
+
+[hr]
+
+[size=30][b]📂 FOLDER STRUCTURE[/b][/size]
+
+[size=26]
+Viewer reads the archive layout produced by the OF sync sidecar:
+[/size]
+
+[code]
+/data/
+  cherrylovebombb-of/
+    metadata.json
+    Timeline/
+    Messages/
+    Stories/
+  thelegogoddess-of/
+    metadata.json
+    Timeline/
+[/code]
+
+[list]
+[*][size=26][b]metadata.json[/b] – OnlyFans posts index, cached by mtime[/size]
+[*][size=26][b]Timeline / Messages / Stories[/b] – media folders, served as-is[/size]
+[*][size=26][b].viewer-thumbs[/b] – generated video thumbs (480px, separate volume)[/size]
+[/list]
+
+[hr]
+
+[size=30][b]🐳 DOCKER QUICK START[/b][/size]
+
+[code]
+services:
+  viewer:
+    image: ghcr.io/manawenuz/cascade-viewer:latest
+    container_name: cascade-viewer
+    restart: unless-stopped
+    ports: ["3102:3102"]
+    environment:
+      OF_BASE: /data
+      OF_THUMBS: /thumbs
+    volumes:
+      - /mnt/pool1/of-downloads:/data:ro
+      - /mnt/pool1/thumbs:/thumbs
+[/code]
+
+[size=26]
+Open http://localhost:3102 — creators appear automatically from `*-of` folders.
+[/size]
+
+[hr]
+
+[size=26]
+Cascade Viewer is actively maintained — sorting, poll display and date picker were just reworked (v1).
+[/size]
+
+[size=28][b]Fast. Simple. Self-hosted. Built for large OnlyFans archives.[/b][/size]
+
+[hr]
+
+[size=30][b]💻 SOURCE + IMAGE[/b][/size]
+
+[url=https://github.com/manawenuz/cascade-viewer]https://github.com/manawenuz/cascade-viewer[/url]
+
+[code]
+ghcr.io/manawenuz/cascade-viewer:latest
+docker pull ghcr.io/manawenuz/cascade-viewer:latest
+[/code]
+
+[size=26]
+Traefik example:
+[/size]
+[code]
+labels:
+  - "traefik.enable=true"
+  - "traefik.http.routers.viewer.rule=Host(`viewer.example.com`)"
+  - "traefik.http.routers.viewer.entrypoints=https"
+  - "traefik.http.routers.viewer.tls=true"
+  - "traefik.http.routers.viewer.tls.certresolver=main"
+[/code]
+
+[/quote]

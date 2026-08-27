@@ -6,15 +6,49 @@ Handles photos, videos, and GIFs.
 
 from curl_cffi import requests
 import time
+import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from config.onlyfans_config import OnlyFansConfig
 from download.downloadstate import DownloadState
 from textio import print_info, print_warning, print_error
+from utils.url_parser import ONLYFANS_POST_PATTERN
 
 PARALLEL_DOWNLOADS = 8
+
+
+def _extract_linked_post_ids(post: Dict) -> Set[str]:
+    """Extract OnlyFans post IDs linked inside post text/rawText.
+
+    Creators often link to other posts via https://onlyfans.com/{id}/{username}.
+    The timeline endpoint returns the linking post only; the linked post's media
+    is not included unless we fetch it via /posts/{id} separately.
+    """
+    ids: Set[str] = set()
+    for field in (post.get('text') or '', post.get('rawText') or ''):
+        if not field:
+            continue
+        for m in ONLYFANS_POST_PATTERN.finditer(str(field)):
+            ids.add(m.group(1))
+    # Also check explicit linked-post fields that some API versions use
+    for key in ('linkedPosts', 'linkedPostIds'):
+        val = post.get(key)
+        if isinstance(val, list):
+            for item in val:
+                if isinstance(item, dict) and 'id' in item:
+                    ids.add(str(item['id']))
+                elif isinstance(item, (str, int)):
+                    ids.add(str(item))
+        elif isinstance(val, (str, int)):
+            ids.add(str(val))
+    # Single linkedPost object
+    for key in ('linkedPost', 'innerPost'):
+        val = post.get(key)
+        if isinstance(val, dict) and 'id' in val:
+            ids.add(str(val['id']))
+    return ids
 
 
 def download_timeline(config: OnlyFansConfig, state: DownloadState) -> None:
@@ -98,6 +132,8 @@ def download_timeline(config: OnlyFansConfig, state: DownloadState) -> None:
 
                 # Collect all media items from this page of posts
                 page_media = []
+                seen_post_ids = {str(p.get('id')) for p in posts if p.get('id')}
+                linked_ids_to_fetch: Set[str] = set()
                 for post in posts:
                     if config.stop_flag and config.stop_flag.is_set():
                         break
@@ -109,6 +145,54 @@ def download_timeline(config: OnlyFansConfig, state: DownloadState) -> None:
                         if media_type == 'video' and not config.download_videos:
                             continue
                         page_media.append(media)
+                    # Collect IDs of posts linked from this post's text
+                    for lid in _extract_linked_post_ids(post):
+                        if lid not in seen_post_ids:
+                            linked_ids_to_fetch.add(lid)
+
+                # Fetch full posts that were linked from the feed but not
+                # present in the timeline page itself (e.g. 1912602845
+                # linked via https://onlyfans.com/1912602845/cherrylovebombb).
+                # We de-dupe across pages with an attribute on config.
+                if not hasattr(config, '_of_linked_fetched'):
+                    config._of_linked_fetched = set()  # type: ignore[attr-defined]
+                linked_ids_to_fetch -= config._of_linked_fetched  # type: ignore[attr-defined]
+                if linked_ids_to_fetch:
+                    print_info(f"Found {len(linked_ids_to_fetch)} linked post(s) in feed, fetching full posts...")
+                    for linked_id in list(linked_ids_to_fetch):
+                        if config.stop_flag and config.stop_flag.is_set():
+                            break
+                        try:
+                            linked_post = api.get_post(linked_id)
+                            # API may return post directly or wrapped
+                            if isinstance(linked_post, dict) and 'id' not in linked_post and 'post' in linked_post:
+                                linked_post = linked_post['post']
+                            if not linked_post or not isinstance(linked_post, dict):
+                                print_warning(f"Linked post {linked_id} returned empty, skipping")
+                                continue
+                            total_posts += 1
+                            for media in parse_post_media(linked_post, state):
+                                media_type = media.get('type', 'unknown')
+                                if media_type in ('photo', 'gif') and not config.download_photos:
+                                    continue
+                                if media_type == 'video' and not config.download_videos:
+                                    continue
+                                page_media.append(media)
+                            print_info(f"  + Linked post {linked_id}: {len(parse_post_media(linked_post, state))} media item(s)")
+                        except requests.exceptions.HTTPError as e:
+                            if getattr(e.response, 'status_code', None) == 404:
+                                print_warning(f"Linked post {linked_id} not found (404), skipping")
+                            elif getattr(e.response, 'status_code', None) == 429:
+                                print_warning("Rate limited while fetching linked post, waiting 60s...")
+                                time.sleep(60)
+                            else:
+                                print_warning(f"Failed to fetch linked post {linked_id}: {e}")
+                        except Exception as e:
+                            print_warning(f"Failed to fetch linked post {linked_id}: {e}")
+                        # Track as fetched regardless of success to avoid re-fetch loops
+                        config._of_linked_fetched.add(linked_id)  # type: ignore[attr-defined]
+                        if config.rate_limit_delay > 0:
+                            time.sleep(config.rate_limit_delay)
 
                 if config.stop_flag and config.stop_flag.is_set():
                     print_warning("Download stopped by user")
@@ -165,6 +249,41 @@ def download_timeline(config: OnlyFansConfig, state: DownloadState) -> None:
                     continue
                 else:
                     raise
+
+        # Also fetch pinned posts (pinned=1) — these are excluded from the
+        # regular timeline (pinned=0) and can contain the target post when
+        # it is linked from the feed. This ensures e.g. 1912602845 is not
+        # missed if it is pinned/archived.
+        try:
+            print_info("Fetching pinned posts...")
+            pinned_resp = api.get_timeline(user_id=state.account_id, limit=100, pinned='1')
+            pinned_posts = pinned_resp.get('list', [])
+            if pinned_posts:
+                print_info(f"Found {len(pinned_posts)} pinned post(s)")
+                pinned_media = []
+                for post in pinned_posts:
+                    if config.stop_flag and config.stop_flag.is_set():
+                        break
+                    for media in parse_post_media(post, state):
+                        media_type = media.get('type', 'unknown')
+                        if media_type in ('photo', 'gif') and not config.download_photos:
+                            continue
+                        if media_type == 'video' and not config.download_videos:
+                            continue
+                        pinned_media.append(media)
+                if pinned_media:
+                    with ThreadPoolExecutor(max_workers=PARALLEL_DOWNLOADS) as pool:
+                        futures = {pool.submit(download_media_item, config, state, m): m for m in pinned_media}
+                        for future in as_completed(futures):
+                            if future.result():
+                                total_media += 1
+                                send_progress(total_media, total_media, futures[future].get('filename', ''))
+                    total_posts += len(pinned_posts)
+        except requests.exceptions.HTTPError as e:
+            if getattr(e.response, 'status_code', None) not in (404, 429):
+                print_warning(f"Pinned posts fetch failed: {e}")
+        except Exception as e:
+            print_warning(f"Pinned posts fetch failed: {e}")
 
         print_info(f"\n✓ Timeline download complete!")
         print_info(f"  Posts processed: {total_posts}")

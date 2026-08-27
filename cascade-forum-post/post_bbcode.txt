@@ -1,0 +1,88 @@
+[quote]
+[size=30][b]CASCADE VIEWER v1[/b][/size]
+[img=450]screenshots/07_mobile.jpg[/img] [i]Creator header + feed top[/i]
+
+[size=28][b]⬇ DOWNLOAD HERE[/b][/size]
+[url=https://github.com/manawenuz/cascade-viewer]https://github.com/manawenuz/cascade-viewer[/url] | [url=https://github.com/manawenuz/cascade-viewer/pkgs/container/cascade-viewer]GHCR: ghcr.io/manawenuz/cascade-viewer:latest[/url]
+
+[hr]
+
+[size=26]
+Cascade Viewer is a self-hosted gallery for local creator archives. Justified grid, full-screen lightbox, search by post text, date navigation and on-demand video thumbs — all in one Docker image.
+
+No cloud.
+No tracking.
+Browse thousands of posts from your local `*-of` archives in the browser.
+[/size]
+
+[hr]
+
+[size=30][b]🖼️ JUSTIFIED GALLERY[/b][/size]
+
+[list]
+[*][size=26]Flickr-style justified rows — no cropping[/size]
+[*][size=26]Lazy-loaded for fast scrolling through 1000+ posts[/size]
+[*][size=26]Sidebar with creator avatar and section counts[/size]
+[/list]
+
+[size=26][i]Media tab — justified grid:[/i][/size]
+[img=250]screenshots/01_grid.jpg[/img]
+[img=250]screenshots/02_grid2.jpg[/img]
+
+[hr]
+
+[size=30][b]🔍 SEARCH + DATE NAVIGATION[/b][/size]
+
+[list]
+[*][size=26]Full-text search inside post text — see “morning” example[/size]
+[*][size=26]Date picker overlay for jumping to any month/day[/size]
+[/list]
+
+[size=26][i]Search active and date picker:[/i][/size]
+[img=250]screenshots/03_search.jpg[/img]
+[img=250]screenshots/04_date.jpg[/img]
+
+[hr]
+
+[size=30][b]🎞️ NATIVE LIGHTBOX[/b][/size]
+
+[list]
+[*][size=26]Fixed, centered overlay — previous/next, counter, close[/size]
+[*][size=26]Photo and video support with ffmpeg thumbs[/size]
+[/list]
+
+[size=26][i]Lightbox — first item then navigated:[/i][/size]
+[img=250]screenshots/05_lightbox.jpg[/img]
+[img=250]screenshots/06_lightbox2.jpg[/img]
+
+[hr]
+
+[size=30][b]📱 MOBILE[/b][/size]
+
+[img=250]screenshots/07_mobile.jpg[/img]
+[img=250]screenshots/08_mobile2.jpg[/img]
+
+[hr]
+
+[size=30][b]🎥 LIVE PREVIEW[/b][/size]
+[img]screenshots/demo.webp[/img]
+[img]screenshots/usage_demo.webp[/img]
+
+[hr]
+
+[size=30][b]🐳 DOCKER QUICK START[/b][/size]
+
+[code]
+services:
+  viewer:
+    image: ghcr.io/manawenuz/cascade-viewer:latest
+    ports: ["3102:3102"]
+    environment:
+      OF_BASE: /data
+      OF_THUMBS: /thumbs
+    volumes:
+      - /mnt/pool1/archives:/data:ro
+      - /mnt/pool1/thumbs:/thumbs
+[/code]
+
+[/quote]
